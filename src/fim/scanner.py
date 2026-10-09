@@ -1,4 +1,4 @@
-"""Recursive, descriptor-anchored scanning without following symlinks."""
+"""Recursive scanning without following symlinks or Windows reparse points."""
 
 import fnmatch
 import logging
@@ -28,6 +28,44 @@ def scan_directory(root: Path, excludes: list[str] | None = None) -> ScanResult:
     patterns = excludes or []
     result = ScanResult()
 
+    def excluded(relative: str, name: str) -> bool:
+        return any(fnmatch.fnmatchcase(relative, p) or fnmatch.fnmatchcase(name, p)
+                   for p in patterns)
+
+    if os.name == "nt":
+        from fim.windows_io import pin_directory, pin_directory_chain
+
+        def visit_windows(directory: Path, prefix: str) -> None:
+            try:
+                with os.scandir(directory) as entries:
+                    names = sorted(entry.name for entry in entries)
+            except OSError as exc:
+                result.errors[prefix or "."] = str(exc)
+                return
+            for name in names:
+                relative = f"{prefix}/{name}" if prefix else name
+                if excluded(relative, name):
+                    continue
+                child = directory / name
+                try:
+                    info = child.lstat()
+                    if getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                        logger.debug("Skipped reparse point: %s", relative)
+                        continue
+                    if stat.S_ISDIR(info.st_mode):
+                        with pin_directory(child):
+                            visit_windows(child, relative)
+                    elif stat.S_ISREG(info.st_mode):
+                        result.hashes[relative] = hash_file(child)
+                    else:
+                        logger.debug("Skipped special file: %s", relative)
+                except OSError as exc:
+                    result.errors[relative] = str(exc)
+
+        with pin_directory_chain(root):
+            visit_windows(root, "")
+        return result
+
     def visit(directory_fd: int, prefix: str) -> None:
         try:
             with os.scandir(directory_fd) as entries:
@@ -37,8 +75,7 @@ def scan_directory(root: Path, excludes: list[str] | None = None) -> ScanResult:
             return
         for name in names:
             relative = f"{prefix}/{name}" if prefix else name
-            if any(fnmatch.fnmatchcase(relative, p) or fnmatch.fnmatchcase(name, p)
-                   for p in patterns):
+            if excluded(relative, name):
                 continue
             try:
                 info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)

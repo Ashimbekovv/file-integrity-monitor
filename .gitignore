@@ -13,3 +13,6 @@ dist/
 .env
 .coverage
 htmlcov/
+demo-files/
+demo-state/
+demo-keys/

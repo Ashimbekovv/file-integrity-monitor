@@ -3,7 +3,7 @@
 ## Project Overview
 
 File Integrity Monitor (FIM) is an educational defensive security tool for Python
-3.11+ on Linux and macOS. It compares SHA-256 file hashes against an authenticated
+3.11+ on Windows, Linux and macOS. It compares SHA-256 file hashes against an authenticated
 baseline and records scan history in SQLite. It detects changes; it does not
 prevent attacks or prove that the initial files are safe.
 
@@ -19,7 +19,8 @@ The project uses small modules and the Python standard library at runtime.
 - Persisted scan summaries and per-file events, including incomplete scan errors.
 - Repeatable exclusion patterns, Unicode names, spaces, and verbose reports.
 - Symlinks and special files are skipped; descriptor-based traversal prevents
-  symlink substitution from redirecting scanning outside the selected tree.
+  symlink substitution on POSIX, and pinned native directory handles prevent it
+  on Windows. Windows junctions and all other reparse points are also skipped.
 - Detection of observable file changes while reading; incomplete scans never
   report inaccessible files as deleted.
 - SQLite integrity checks and an explicit baseline verification command.
@@ -32,6 +33,11 @@ Docker, web frontend, or API credentials are required.
 
 ## Installation
 
+**Windows users:** see the [Windows quick start](WINDOWS.md) for PowerShell
+commands in Russian. No WSL, Ubuntu, administrator access or PowerShell activation
+script is needed. Once installed, run `.\.venv\Scripts\python.exe examples\demo.py`
+for a disposable demonstration that does not touch personal files.
+
 From the repository root on Linux/macOS:
 
 ```sh
@@ -40,6 +46,7 @@ python3 -m venv .venv
 python -m pip install -e .
 python -m pip install -r requirements-dev.txt
 fim --help
+python examples/demo.py
 ```
 
 ## Usage
@@ -136,7 +143,11 @@ permission failure simulation, symlink exclusion, recursive exclusions, Unicode,
 empty baselines, all four change classifications, database corruption, repeat
 initialization, persistence across reopening, wrong roots, key separation, and
 signed-baseline tampering. Permission denial is simulated so the test also works
-when run as root.
+when run as root. GitHub Actions runs the suite and installed CLI demo on Windows,
+Linux and macOS with Python 3.11 and 3.13. Native Windows tests check junctions,
+handle-based rename protection, binary reading and symlink substitution. Those
+tests are skipped on other operating systems; symlink tests may additionally skip
+on Windows machines without link-creation privileges.
 
 ## Security Considerations
 
@@ -145,6 +156,8 @@ when run as root.
 - HMAC-SHA-256 authenticates the canonical root, exclusions and complete file/hash
   mapping. The key is never stored in SQLite. Use cryptographically random bytes,
   restrictive filesystem permissions, secure backups, and a separate key directory.
+  On Windows, `chmod(0600)` does not establish a private NTFS access-control list;
+  use your private Windows user profile and configure ACLs for production keys.
   A length check cannot determine whether a key actually has sufficient entropy.
 - `verify-baseline` checks SQLite structure and the baseline HMAC. Ordinary JSON
   is used only for deterministic encoding, not as a security boundary.
@@ -158,6 +171,10 @@ when run as root.
   maintain an independently trusted record if rollback detection is required.
 - Symlinks are skipped, including internal ones. Hard links are regular files;
   the tool cannot establish whether an inode has additional links elsewhere.
+  On Windows, all reparse points are skipped, including OneDrive placeholders.
+  Use an ordinary local directory for complete coverage. Windows opens directory
+  ancestors without delete sharing for the duration of traversal. Existing handles
+  with incompatible sharing cause a read error rather than less safe scanning.
 - No user file is modified or deleted by scanning. Only the explicitly supplied
   database is written. No automatic system-wide scanning occurs.
 - Never commit keys, databases, `.env` files, virtual environments, or personal
@@ -165,7 +182,8 @@ when run as root.
 
 ## Limitations
 
-- POSIX only in this version; Windows requires a different safe traversal approach.
+- Baseline roots are absolute, platform-specific paths. Create a new baseline
+  when moving monitored files between machines or operating systems.
 - No filesystem snapshot or locking: a scan is not an atomic view of a live tree.
   Metadata checks detect many file changes during reading but cannot guarantee
   detection of adversarial concurrent mutations. Quiesce important directories
@@ -184,7 +202,7 @@ when run as root.
 ## Future Improvements
 
 - Authenticate audit history and anchor baseline revisions externally for rollback detection.
-- Optional file metadata policies and a safe Windows implementation.
+- Optional file metadata policies and broader filesystem compatibility testing.
 - Snapshot-aware scanning, scheduled execution, and local notifications.
 - History export and retention, after documenting their security properties.
 

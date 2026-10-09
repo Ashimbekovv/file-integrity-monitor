@@ -22,11 +22,11 @@ def test_missing(tmp_path):
         hash_file(tmp_path / "missing")
 
 
-def test_symlink(tmp_path):
+def test_symlink(tmp_path, make_symlink):
     target = tmp_path / "target"
     target.write_text("secret")
     link = tmp_path / "link"
-    link.symlink_to(target)
+    make_symlink(link, target)
     with pytest.raises(OSError):
         hash_file(link)
 

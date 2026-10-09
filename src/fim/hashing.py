@@ -1,9 +1,10 @@
-"""Streaming hashes with checks for concurrent changes (POSIX)."""
+"""Streaming hashes with checks for concurrent changes on POSIX and Windows."""
 
 import hashlib
 import os
 import stat
 from pathlib import Path
+from contextlib import ExitStack
 
 
 class UnstableFileError(OSError):
@@ -19,18 +20,31 @@ def hash_file(path: Path | str, *, dir_fd: int | None = None) -> str:
 
     The scanner supplies an anchored directory descriptor for safe traversal.
     """
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
-    try:
-        before = os.fstat(fd)
-        if not stat.S_ISREG(before.st_mode):
-            raise OSError("Not a regular file")
-        digest = hashlib.sha256()
-        while chunk := os.read(fd, 1024 * 1024):
-            digest.update(chunk)
-        after = os.fstat(fd)
-        current = os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
-        if _identity(before) != _identity(after) or _identity(after) != _identity(current):
-            raise UnstableFileError(f"File changed during reading: {path}")
-        return digest.hexdigest()
-    finally:
-        os.close(fd)
+    with ExitStack() as stack:
+        if os.name == "nt":
+            from fim.windows_io import open_file_fd, pin_directory_chain
+
+            if dir_fd is not None:
+                raise ValueError("Directory descriptors are not supported on Windows")
+            path = Path(path).absolute()
+            stack.enter_context(pin_directory_chain(path.parent))
+            fd = open_file_fd(path)
+        else:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+        stack.callback(os.close, fd)
+        return _hash_open_file(fd, path, dir_fd)
+
+
+def _hash_open_file(fd: int, path: Path | str, dir_fd: int | None) -> str:
+    """Read a descriptor whose lifetime and ancestors are managed by caller."""
+    before = os.fstat(fd)
+    if not stat.S_ISREG(before.st_mode):
+        raise OSError("Not a regular file")
+    digest = hashlib.sha256()
+    while chunk := os.read(fd, 1024 * 1024):
+        digest.update(chunk)
+    after = os.fstat(fd)
+    current = os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
+    if _identity(before) != _identity(after) or _identity(after) != _identity(current):
+        raise UnstableFileError(f"File changed during reading: {path}")
+    return digest.hexdigest()

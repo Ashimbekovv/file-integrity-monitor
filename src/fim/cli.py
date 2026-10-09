@@ -14,7 +14,7 @@ from fim.scanner import scan_directory
 
 
 def parser() -> argparse.ArgumentParser:
-    cli = argparse.ArgumentParser(description="SHA-256 file integrity monitor (POSIX)")
+    cli = argparse.ArgumentParser(description="SHA-256 file integrity monitor (Windows/Linux/macOS)")
     subcommands = cli.add_subparsers(dest="command", required=True)
     for name in ("init", "scan", "status", "history", "verify-baseline"):
         command = subcommands.add_parser(name)
@@ -41,8 +41,8 @@ def validate_locations(root: Path, db: Path, key: Path) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
-    if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
-        raise ValueError("This release requires a POSIX system (Linux/macOS)")
+    if os.name not in ("posix", "nt"):
+        raise ValueError("This release supports Windows, Linux and macOS")
     db_path = args.db.resolve()
     key_path = args.key.resolve(strict=True)
     if db_path == key_path:

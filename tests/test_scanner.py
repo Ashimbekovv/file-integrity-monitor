@@ -8,7 +8,7 @@ def test_empty(tmp_path):
 
 
 def test_unicode_recursive_exclusions(tmp_path):
-    (tmp_path / "Русский файл.txt").write_text("пример")
+    (tmp_path / "Русский файл.txt").write_text("пример", encoding="utf-8")
     folder = tmp_path / "nested"
     folder.mkdir()
     (folder / "keep").write_text("yes")
@@ -18,14 +18,14 @@ def test_unicode_recursive_exclusions(tmp_path):
     assert set(scan_directory(tmp_path, ["nested"]).hashes) == {"Русский файл.txt"}
 
 
-def test_no_external_symlinks(tmp_path):
+def test_no_external_symlinks(tmp_path, make_symlink):
     root = tmp_path / "root"
     root.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "secret").write_text("secret")
-    (root / "external").symlink_to(outside, target_is_directory=True)
-    (root / "file-link").symlink_to(outside / "secret")
+    make_symlink(root / "external", outside, directory=True)
+    make_symlink(root / "file-link", outside / "secret")
     assert scan_directory(root).hashes == {}
 
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-integrity-monitor"
-version = "1.0.0"
+version = "1.1.0"
 description = "Educational SHA-256 file integrity monitor with authenticated baselines"
 requires-python = ">=3.11"
 license = "MIT"
