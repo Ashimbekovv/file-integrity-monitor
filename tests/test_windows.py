@@ -82,6 +82,17 @@ def test_binary_mode_preserves_crlf_and_control_z(tmp_path):
     assert hash_file(path) == hashlib.sha256(data).hexdigest()
 
 
+def test_hash_after_repeated_completed_writes(tmp_path):
+    """Completed writes must not appear as mutations during a later read."""
+    import hashlib
+
+    path = tmp_path / "rewritten"
+    for count in range(20):
+        data = f"revision {count}".encode()
+        path.write_bytes(data)
+        assert hash_file(path) == hashlib.sha256(data).hexdigest()
+
+
 def test_symlink_swapped_after_listing_is_rejected(tmp_path, monkeypatch, make_symlink):
     from fim import windows_io
 

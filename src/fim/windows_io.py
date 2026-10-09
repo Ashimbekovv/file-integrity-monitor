@@ -19,7 +19,6 @@ FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
 FILE_SHARE_READ_WRITE = 0x3
 OPEN_EXISTING = 3
 GENERIC_READ = 0x80000000
-FILE_READ_ATTRIBUTES = 0x80
 
 
 class FileInformation(ctypes.Structure):
@@ -52,7 +51,9 @@ kernel32.CloseHandle.restype = wintypes.BOOL
 def _open_handle(path: Path, *, directory: bool) -> int:
     """Open the entry itself and reject links/junctions before reading data."""
     handle = kernel32.CreateFileW(
-        str(path), FILE_READ_ATTRIBUTES if directory else GENERIC_READ,
+        # Metadata-only opens do not enforce share restrictions on Windows.
+        # GENERIC_READ is required even for directory handles.
+        str(path), GENERIC_READ,
         FILE_SHARE_READ_WRITE, None, OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None,
     )

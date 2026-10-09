@@ -44,7 +44,18 @@ def _hash_open_file(fd: int, path: Path | str, dir_fd: int | None) -> str:
     while chunk := os.read(fd, 1024 * 1024):
         digest.update(chunk)
     after = os.fstat(fd)
-    current = os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
+    if os.name == "nt":
+        from fim.windows_io import open_file_fd
+
+        # Use handle metadata for both reads: Windows path-stat and fstat can
+        # expose different timestamp precision/cache behavior after a write.
+        current_fd = open_file_fd(Path(path))
+        try:
+            current = os.fstat(current_fd)
+        finally:
+            os.close(current_fd)
+    else:
+        current = os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
     if _identity(before) != _identity(after) or _identity(after) != _identity(current):
         raise UnstableFileError(f"File changed during reading: {path}")
     return digest.hexdigest()
